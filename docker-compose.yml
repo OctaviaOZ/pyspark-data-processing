@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  spark-master:
+    image: bitnami/spark:3.5.0-debian-11-r0
+    command: >
+      /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src
+
+  spark-worker:
+    image: bitnami/spark:3.5.0-debian-11-r0
+    command: >
+      /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    depends_on:
+      - spark-master
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src
+
+  spark-job:
+    build: .
+    command: >
+      spark-submit
+      --master spark://spark-master:7077
+      src/main.py
+      --impressions-path /app/data/impressions
+      --clicks-path /app/data/clicks
+      --add-to-carts-path /app/data/add_to_carts
+      --previous-orders-path /app/data/previous_orders
+      --output-path /app/data/output
+      --process-date 2025-08-16
+    depends_on:
+      - spark-master
+      - spark-worker
+    volumes:
+      - ./data:/app/data
+      - ./src:/app/src

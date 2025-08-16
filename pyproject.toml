@@ -1,0 +1,23 @@
+[tool.poetry]
+name = "test-zalando"
+version = "0.1.0"
+description = ""
+authors = ["OctaviaOZ <oksana.zavada@gmail.com>"]
+readme = "README.md"
+packages = [{include = "src"}]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+pyspark = "^4.0.0"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+
+[tool.pytest.ini_options]
+pythonpath = ["tests"]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
