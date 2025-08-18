@@ -26,7 +26,7 @@ RUN groupadd -r -g 1001 sparkgroup && useradd -r -u 1001 -g sparkgroup sparkuser
 
 # Grant write permissions to the group for Spark's internal directories.
 # This allows a container running with a different UID but the same GID to function.
-RUN chmod -R g+w /opt/bitnami/spark
+RUN chown -R sparkuser:sparkgroup /opt/bitnami/spark
 
 # Set ownership of the app directory
 RUN chown -R sparkuser:sparkgroup /app

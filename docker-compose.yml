@@ -32,13 +32,14 @@ services:
     command: >
       spark-submit
       --master spark://spark-master:7077
-      src/main.py
-      --impressions-path /app/data/impressions
-      --clicks-path /app/data/clicks
-      --add-to-carts-path /app/data/add_to_carts
-      --previous-orders-path /app/data/previous_orders
+      --conf spark.driver.extraJavaOptions="-Dlog4j.configuration=file:/opt/bitnami/spark/conf/log4j2.properties"
+      /app/src/main.py
+      --impressions-path /app/data/impressions/dt=${PROCESS_DATE}
+      --clicks-path /app/data/clicks/dt=${PROCESS_DATE}
+      --add-to-carts-path /app/data/add_to_carts/dt=${PROCESS_DATE}
+      --previous-orders-path /app/data/previous_orders/previous_orders.parquet
       --output-path /app/data/output
-      --process-date $$PROCESS_DATE
+      --process-date ${PROCESS_DATE}
     depends_on:
       - spark-master
       - spark-worker

@@ -9,7 +9,7 @@ set -e
 export PROCESS_DATE=${1:-2025-08-16}
 
 # Define the output directory
-OUTPUT_DIR="./data/output"
+OUTPUT_DIR="./data/output/dt=$PROCESS_DATE"
 
 echo "--- Preparing environment ---"
 
@@ -21,14 +21,16 @@ fi
 
 # Set the ownership of the data directory to the user ID (1001) that the sparkuser
 # inside the Bitnami container uses. This ensures the container can write to the volume.
-echo "Setting permissions on ./data directory..."
-sudo chown -R 1001:1001 ./data
+# echo "Setting permissions on ./data directory..."
+# sudo chown -R 1001:1001 ./data
 
 echo "Environment is clean and permissions are set."
 echo ""
 echo "--- Starting the Spark pipeline via Docker Compose ---"
 
-docker-compose up --build --remove-orphans
+# The --build flag ensures the image is rebuilt if the Dockerfile changes.
+# Docker Compose will automatically use the PROCESS_DATE environment variable.
+docker-compose up --build --remove-orphans --exit-code-from spark-job
 
 echo ""
 echo "--- Spark pipeline finished successfully! ---"
