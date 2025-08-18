@@ -24,6 +24,11 @@ services:
 
   spark-job:
     build: .
+    user: "${UID:-1000}:${GID:-1000}"
+    group_add:
+      - "1001"
+    environment:
+      - PROCESS_DATE=${PROCESS_DATE:-2025-08-16}  
     command: >
       spark-submit
       --master spark://spark-master:7077
@@ -33,7 +38,7 @@ services:
       --add-to-carts-path /app/data/add_to_carts
       --previous-orders-path /app/data/previous_orders
       --output-path /app/data/output
-      --process-date 2025-08-16
+      --process-date $$PROCESS_DATE
     depends_on:
       - spark-master
       - spark-worker

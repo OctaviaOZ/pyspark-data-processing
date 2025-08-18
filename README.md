@@ -97,11 +97,21 @@ The entire application is containerized, so you only need Docker to run it.
 
 ### Running the Pipeline
 
-Simply run the startup script. It will build the Docker image, start the Spark cluster, run the job, and then shut everything down.
+The `start.sh` script handles the entire process of building the Docker image, starting the Spark cluster, and running the job.
 
-```bash
-./start.sh
-````
+You can run the pipeline for a specific date by passing it as an argument in `YYYY-MM-DD` format. If no date is provided, it will default to `2025-08-16`.
+
+**Examples:**
+
+* **Run for a specific date:**
+    ```bash
+    ./start.sh 2025-08-15
+    ```
+
+* **Run for the default date (`2025-08-16`):**
+    ```bash
+    ./start.sh
+    ```
 
 The output will be saved in the `data/output/` directory, partitioned by the processing date.
 

@@ -5,6 +5,9 @@
 
 set -e
 
+# add processed date with default value
+export PROCESS_DATE=${1:-2025-08-16}
+
 # Define the output directory
 OUTPUT_DIR="./data/output"
 
