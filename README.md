@@ -66,6 +66,7 @@ The PySpark pipeline consists of the following modular steps:
 
 ### Scalability and Performance
 
+-   **Salting for Skewed Data**: The pipeline uses a salting technique to mitigate data skew when processing customer actions. By adding a random "salt" key to the `customer_id`, the data for "power users" is distributed across multiple partitions, allowing for more parallelized and efficient processing.
 -   **Explicit Schemas**: Defining schemas upfront in `schemas.py` avoids slow and error-prone schema inference at runtime.
 -   **Native Spark Functions**: The pipeline avoids Python UDFs in favor of highly optimized, native Spark functions for all transformations, including the padding of action sequences. This prevents performance bottlenecks caused by data serialization between the JVM and Python.
 -   **Caching**: The unified `actions` DataFrame is cached in memory (`.cache()`) because it is used in the subsequent step to build customer action histories. This prevents Spark from having to recompute it from scratch.

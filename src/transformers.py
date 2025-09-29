@@ -4,6 +4,7 @@ This module contains the core data transformation logic for the Spark pipeline.
 from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
+from pyspark.sql.types import TimestampType
 
 def unify_actions(
     clicks: DataFrame, add_to_carts: DataFrame, previous_orders: DataFrame
@@ -65,7 +66,11 @@ def get_customer_actions(
 
     # Pad the results
     padding_array = F.array([
-        F.struct(F.lit(0).alias("item_id"), F.lit(0).alias("action_type"))
+        F.struct(
+            F.lit(None).cast(TimestampType()).alias("timestamp"),
+            F.lit(0).alias("item_id"),
+            F.lit(0).alias("action_type")
+        )
     ] * action_history_length)
 
     customer_actions_padded = customer_actions_merged.withColumn(

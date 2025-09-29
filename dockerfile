@@ -2,7 +2,7 @@ FROM bitnami/spark:3.5.0-debian-11-r0
 
 # Install system dependencies for Poetry and Python build tools
 USER root
-RUN install_packages curl python3-pip build-essential && pip install poetry==1.4.2
+RUN install_packages curl python3-pip build-essential && pip install poetry==1.4.2 && pip install pyyaml
 
 # Add Poetry to the PATH
 ENV PATH="/root/.local/bin:${PATH}"
