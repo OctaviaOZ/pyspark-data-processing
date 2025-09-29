@@ -1,0 +1,5 @@
+pipeline:
+  action_history_length: 1000
+  salt_buckets: 10
+spark:
+  app_name: "PySparkApp"

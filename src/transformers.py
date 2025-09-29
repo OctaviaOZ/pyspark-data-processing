@@ -5,8 +5,6 @@ from pyspark.sql import DataFrame
 from pyspark.sql import functions as F
 from pyspark.sql.window import Window
 
-ACTION_HISTORY_LENGTH = 1000
-
 def unify_actions(
     clicks: DataFrame, add_to_carts: DataFrame, previous_orders: DataFrame
 ) -> DataFrame:
@@ -34,30 +32,49 @@ def unify_actions(
     )
     return clicks_df.unionByName(add_to_carts_df).unionByName(previous_orders_df)
 
-def get_customer_actions(actions: DataFrame, process_date: str) -> DataFrame:
-    """For each customer, get the last N actions before the process_date."""
+def get_customer_actions(
+    actions: DataFrame,
+    process_date: str,
+    action_history_length: int,
+    salt_buckets: int,
+) -> DataFrame:
+    """For each customer, get the last N actions before the process_date, mitigating data skew with salting."""
     actions_before_process_date = actions.filter(
         F.col("dt") < F.to_date(F.lit(process_date), "yyyy-MM-dd")
     )
-    window_spec = Window.partitionBy("customer_id").orderBy(F.col("timestamp").desc())
-    customer_actions = (
-        actions_before_process_date.withColumn(
-            "action", F.struct("item_id", "action_type")
-        )
+
+    # Stage 1: Distribute and aggregate with salt
+    salted_actions = actions_before_process_date.withColumn("salt", (F.rand() * salt_buckets).cast("int"))
+    window_spec = Window.partitionBy("customer_id", "salt").orderBy(F.col("timestamp").desc())
+
+    customer_actions_salted = (
+        salted_actions.withColumn("action", F.struct("timestamp", "item_id", "action_type"))
         .withColumn("rank", F.row_number().over(window_spec))
-        .filter(F.col("rank") <= ACTION_HISTORY_LENGTH)
-        .groupBy("customer_id")
+        .filter(F.col("rank") <= action_history_length)
+        .groupBy("customer_id", "salt")
         .agg(F.collect_list("action").alias("actions"))
     )
+
+    # Stage 2: Merge salted results
+    customer_actions_merged = (
+        customer_actions_salted.groupBy("customer_id")
+        .agg(F.flatten(F.collect_list("actions")).alias("actions"))
+        .withColumn("actions", F.sort_array(F.col("actions"), asc=False))
+        .withColumn("actions", F.slice(F.col("actions"), 1, action_history_length))
+    )
+
+    # Pad the results
     padding_array = F.array([
         F.struct(F.lit(0).alias("item_id"), F.lit(0).alias("action_type"))
-    ] * ACTION_HISTORY_LENGTH)
-    customer_actions_padded = customer_actions.withColumn(
+    ] * action_history_length)
+
+    customer_actions_padded = customer_actions_merged.withColumn(
         "actions",
         F.slice(
-            F.concat(F.col("actions"), padding_array), 1, ACTION_HISTORY_LENGTH
+            F.concat(F.col("actions"), padding_array), 1, action_history_length
         ),
     )
+
     return customer_actions_padded.select(
         "customer_id",
         F.col("actions.item_id").alias("actions"),

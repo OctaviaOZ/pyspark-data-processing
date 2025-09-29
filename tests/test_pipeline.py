@@ -11,7 +11,6 @@ from src.transformers import (
     unify_actions,
     get_customer_actions,
     get_impressions_for_date,
-    ACTION_HISTORY_LENGTH,
 )
 from src.pipeline import create_training_data
 from src.schemas import (
@@ -20,6 +19,16 @@ from src.schemas import (
     add_to_carts_schema,
     previous_orders_schema,
 )
+
+@pytest.fixture(scope="module")
+def sample_config():
+    """Provides a sample configuration for tests."""
+    return {
+        "pipeline": {
+            "action_history_length": 1000,
+            "salt_buckets": 2,
+        }
+    }
 
 @pytest.fixture(scope="module")
 def sample_data(spark_session: SparkSession):
@@ -70,51 +79,49 @@ class TestPipelineFunctions:
             sample_data["clicks"], sample_data["add_to_carts"], sample_data["previous_orders"]
         )
         
-        # Corrected assertions
         assert actions_df.count() == 1206
         assert actions_df.filter(col("action_type") == 1).count() == 1203
         assert actions_df.filter(col("action_type") == 2).count() == 2
         assert actions_df.filter(col("action_type") == 3).count() == 1
 
-    # ... (rest of the tests remain the same)
     def test_get_impressions_for_date(self, sample_data):
         """
         Tests that only impressions for the correct process_date are filtered and exploded.
         """
         impressions_on_date = get_impressions_for_date(sample_data["impressions"], "2025-08-16")
         
-        # Expecting 2 (cust 1) + 1 (cust 2) + 1 (cust 3) + 1 (cust 5) = 5 impressions
         assert impressions_on_date.count() == 5
         assert impressions_on_date.filter(col("customer_id") == 4).count() == 0
 
-    def test_get_customer_actions(self, sample_data):
+    def test_get_customer_actions(self, sample_data, sample_config):
         """
         Tests the core logic of creating padded action sequences and preventing data leaks.
         """
         actions_df = unify_actions(
             sample_data["clicks"], sample_data["add_to_carts"], sample_data["previous_orders"]
         )
-        customer_actions = get_customer_actions(actions_df, "2025-08-16")
+        customer_actions = get_customer_actions(
+            actions_df, "2025-08-16", **sample_config["pipeline"]
+        )
         
         # Test customer 1 (more than 1000 actions)
         customer_1_row = customer_actions.filter(col("customer_id") == 1).first()
         assert customer_1_row is not None
-        assert len(customer_1_row.actions) == ACTION_HISTORY_LENGTH
+        assert len(customer_1_row.actions) == sample_config["pipeline"]["action_history_length"]
         assert 0 not in customer_1_row.actions
 
         # Test customer 2 (3 actions)
         customer_2_row = customer_actions.filter(col("customer_id") == 2).first()
         assert customer_2_row is not None
-        assert len(customer_2_row.actions) == ACTION_HISTORY_LENGTH
+        assert len(customer_2_row.actions) == sample_config["pipeline"]["action_history_length"]
         assert customer_2_row.actions[2] != 0 # First 3 actions are real
         assert customer_2_row.actions[3] == 0  # Check for padding
 
         # Test customer 5 (data leak prevention)
         customer_5_row = customer_actions.filter(col("customer_id") == 5).first()
-        # Should have no actions because the only action was on the process_date
         assert customer_5_row is None
 
-    def test_create_training_data_integration(self, sample_data):
+    def test_create_training_data_integration(self, sample_data, sample_config):
         """
         An integration test to ensure the full pipeline handles all cases correctly.
         """
@@ -124,6 +131,7 @@ class TestPipelineFunctions:
             sample_data["add_to_carts"],
             sample_data["previous_orders"],
             "2025-08-16",
+            sample_config,
         )
         
         assert training_df.count() == 5

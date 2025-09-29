@@ -9,7 +9,6 @@ from src.transformers import (
     unify_actions,
     get_customer_actions,
     get_impressions_for_date,
-    ACTION_HISTORY_LENGTH
 )
 
 def create_training_data(
@@ -18,20 +17,26 @@ def create_training_data(
     add_to_carts: DataFrame,
     previous_orders: DataFrame,
     process_date: str,
+    config: dict,
 ) -> DataFrame:
     """
     Creates the training data for the model by executing the end-to-end pipeline.
     """
     actions = unify_actions(clicks, add_to_carts, previous_orders).cache()
 
-    customer_actions = get_customer_actions(actions, process_date)
+    customer_actions = get_customer_actions(
+        actions,
+        process_date,
+        config["pipeline"]["action_history_length"],
+        config["pipeline"]["salt_buckets"],
+    )
     impressions_on_date = get_impressions_for_date(impressions, process_date)
 
     training_df = impressions_on_date.join(
         customer_actions, "customer_id", "left"
     )
 
-    zero_array = F.array([F.lit(0)] * ACTION_HISTORY_LENGTH)
+    zero_array = F.array([F.lit(0)] * config["pipeline"]["action_history_length"])
     training_df = training_df.withColumn(
         "actions", F.coalesce(F.col("actions"), zero_array)
     ).withColumn(

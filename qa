@@ -1,0 +1,50 @@
+### Design and Trade-offs
+
+* **Q: You chose to pre-process the action sequences. What's the trade-off versus looking them up at training time?**
+    * The trade-off is **CPU pre-computation vs. training-time I/O bottleneck**. By preparing the fixed-length sequences in Spark, we offload all heavy lifting to a scalable, distributed environment. This creates a highly optimized, "wide" Parquet file. The alternative—looking up and padding actions at training time—would make the data loader the bottleneck, starving the GPU and dramatically slowing down model experimentation. My approach ensures maximum GPU utilization.
+
+* **Q: Why a window function? Could you use a `groupBy` and a UDF instead?**
+    * A **window function is the most performant and idiomatic way** to do this in Spark. It operates on a per-partition basis without requiring a full shuffle of all a user's data to a single executor. A `groupBy` followed by a Python UDF would be disastrous for performance due to the overhead of data serialization between the JVM and Python and the loss of Spark's native optimization capabilities.
+
+* **Q: How would you efficiently enforce a 1-year lookback for historical actions?**
+    * I'd apply a **date-based filter on the unified `actions` dataframe** right at the beginning of the `get_customer_actions` function. The filter would be `F.col("dt") >= F.date_sub(F.lit(process_date), 365)`. Since the action data is Hive-partitioned by date (`dt`), Spark's Catalyst optimizer would leverage partition pruning, meaning it would only read the necessary 365 partitions from disk, making the operation incredibly efficient regardless of the total history size.
+
+***
+
+### Scalability and Productionization
+
+* **Q: How would you deploy this to a production Airflow/EMR environment?**
+    * First, I'd containerize the application and push the image to a registry like ECR. Then, in Airflow, I'd create a DAG using the `SparkSubmitOperator`. The operator would be configured to submit the job to a provisioned EMR cluster. Key parameters like the `process-date`, input/output paths, and Spark configs (executor memory, cores) would be templated using Airflow variables and macros for dynamic and scheduled runs.
+
+* **Q: How would you optimize the final large join between impressions and actions?**
+    * The key is to **ensure the data is co-partitioned by the join key (`customer_id`)** before the join. While Spark's Adaptive Query Execution (AQE) can handle some of this, I would explicitly repartition both dataframes by `customer_id` just before the join. For further optimization, if the `customer_actions` table is small enough to fit in memory on each executor (which is unlikely here), I could use a broadcast join.
+
+* **Q: How would you monitor this pipeline in production?**
+    * I'd focus on three areas:
+        1.  **Application Metrics**: Using Spark's built-in web UI and metrics system to track stage duration, shuffle I/O, and memory usage to detect performance regressions or data skew.
+        2.  **Data Quality**: Integrating a library like Great Expectations to run automated checks post-job, alerting on schema changes, null counts, or unexpected distributions in the output data.
+        3.  **Orchestration**: Using Airflow's native alerting for job failures, SLA misses, and duration thresholds.
+
+***
+
+### Data Quality and Governance
+
+* **Q: How would you incorporate data lineage, governance, and privacy (GDPR)?**
+    * **Lineage**: I'd integrate a tool like OpenLineage, which plugs into Spark to automatically capture metadata and trace the flow from source tables to the final training set.
+    * **Governance**: I would establish a data contract using schema definitions. The explicit schemas in `schemas.py` are the first step. I would expand this by publishing them to a central schema registry.
+    * **Privacy (GDPR)**: For a deletion request, I'd build a separate, audited Spark job. It would take a `customer_id`, identify all Parquet partitions containing that user's data, read them, filter out the user's records, and overwrite the partitions. This is more efficient and safer than trying to modify Parquet files in place.
+
+* **Q: How would you handle a 6-hour delay in the upstream `clicks` data?**
+    * I'd implement **data readiness checks** in the Airflow DAG. Before the main Spark job runs, a `FileSensor` or a custom sensor would check for the existence and completeness of the source data partitions for that day. If the `clicks` data hasn't arrived within a defined SLA, the DAG would pause and send an alert, preventing the pipeline from running with incomplete, corrupt data.
+
+***
+
+### Problem Solving and Ambiguity
+
+* **Q: What was the most ambiguous requirement and how did you resolve it?**
+    * The most ambiguous part was the exact **structure of the final training data**. The prompt described the model's `forward` method but didn't mandate a specific file format or schema. I made the assumption to create a single, wide Parquet file where each row is a complete training example. I chose this because it drastically simplifies the data loading in PyTorch and is the most performant approach for maximizing GPU throughput, which was a key goal.
+
+* **Q: How would you add new features like 'time since last click' or '30-day order count'?**
+    * I would enhance the `get_customer_actions` transformation.
+        * **For 'time since last click'**: Within the same window function, I'd add `F.lag("timestamp").over(window_spec)` to get the previous action's timestamp and calculate the difference.
+        * **For '30-day order count'**: I would add a second window function, but this one would be a range-based window: `Window.partitionBy("customer_id").orderBy("timestamp").rangeBetween(Window.days(-30), Window.currentRow)`. I could then count the number of orders within that window to create the feature before the final join.

@@ -12,7 +12,7 @@ def spark_session(request):
     The 'session' scope means this fixture is created once for the entire test run,
     which is highly efficient.
     """
-    spark = SparkSession.builder.appName("CodingChallengeTests").getOrCreate()
+    spark = SparkSession.builder.appName("SparkTests").getOrCreate()
     
     # request.addfinalizer ensures that the stop() function is called when the
     # test session finishes, regardless of whether the tests passed or failed.

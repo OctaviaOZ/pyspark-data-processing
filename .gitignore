@@ -18,6 +18,7 @@ data/output/
 *.log
 *.tmp
 *.swp
+qa.*
 
 # IDE/Editor specific
 .idea/
